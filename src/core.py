@@ -129,7 +129,7 @@ class Symbol:
 
         return f'^{self.glyph}{res}'
 
-    def add_rule(self):
+    def add_rule(self, rule: ProductionRule):
         # TODO: implement
         raise NotImplementedError()
 
@@ -140,6 +140,9 @@ class Symbol:
 
     def __repr__(self):
         return f'symbol[name=\'{self.name}\', glyph=\'{self.glyph}\', params={self.params}]'
+
+    def __hash__(self):
+        return hash(self.glyph)
 
     def __eq__(self, other: 'Symbol') -> bool:
 
