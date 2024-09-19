@@ -51,8 +51,8 @@ class Symbol:
             raise TypeError(f"expected 'call' to be a callable but got {type(call)} instead!")
 
         # Initialise instance variables.
-        self._name: str = name
-        self._glyph: str = name if glyph is None else glyph
+        self._name: str = glyph if name is None else name
+        self._glyph: str = glyph
         self._parameter_names: ParamTuple = tuple(params) if params is not None else tuple()
         self._command: Optional[CommandCallable] = call
         self._ruleset: list = []
