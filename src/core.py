@@ -10,6 +10,25 @@ ParamTuple = tuple[str, ...]
 CommandCallable = Callable[..., Any]
 """A callable that implements the command represented by a Symbol"""
 
+class ProductionRule:
+    """
+    A rewrite rule that describe how instances of symbols are replaced with other instances of symbols from the same
+    alphabet.
+    """
+    def __init__(self, name, pre, post, handler):
+        """
+        Create a new production rule.
+
+        :param str name: the name of the rule
+        :param int pre: the number of symbols to the left of the subject that are captured.
+        :param int post: the number of symbols to the right of the subject that are captured.
+        :param str handler: the callable that will handle the rule.
+        """
+        self._name = None
+        self._pre_capture = None
+        self._post_capture = None
+        self._handler = None
+
 class Symbol:
     """
     Describes a symbol that is part of a Lindenmayer system alphabet.
