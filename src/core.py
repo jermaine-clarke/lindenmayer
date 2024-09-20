@@ -192,9 +192,187 @@ class Symbol:
 # TODO: the module string is implemented as a module tree that can be flattened into a string object.
 
 class ModuleTree:
+    """
+    A Tree representation of the string processed by a Lindenmayer system.
 
-    class _Node:
-        pass
+    A ModuleTree may be parsed from a string or flattened into a string.
+    """
+    class _Module:
+        """
+        A node in a ModuleTree
+        """
+        def __init__(self,
+                     symbol: Symbol,
+                     parent: Optional['ModuleTree._Module'] = None,
+                     left: Optional['ModuleTree._Module'] = None,
+                     right: Optional['ModuleTree._Module'] = None,
+                     params: Optional[dict[str, str]] = None):
+            """
+            Creates a node in a ModuleTree
+
+            :param symbol: the symbol that this node represents.
+            :param parent: the optional parent of this node.
+            :param left: the immediate sibling to the left of this node.
+            :param right: the immediate sibling to the right of this node.
+            :param params: the parameters for the symbol instance represented by this node. Ignored if the symbol does
+                           not take any parameters.
+            :raises KeyError: if *params* does not match the parameters required by *symbol*
+            """
+            if not isinstance(symbol, Symbol):
+                raise TypeError(f"'symbol' must be type Symbol but got {type(symbol)} instead!")
+            if parent is not None and not isinstance(parent, type(self)):
+                raise TypeError(f"expected 'parent' to be type {type(self)} but got {type(parent)} instead!")
+            if left is not None and not isinstance(left, type(self)):
+                raise TypeError(f"expected 'left' to be type {type(self)} but got {type(left)} instead!")
+            if right is not None and not isinstance(right, type(self)):
+                raise TypeError(f"expected 'right' to be type {type(self)} but got {type(right)} instead!")
+            if len(symbol.params) > 0:
+                if params is None:
+                    raise KeyError(f"expected {len(symbol.params)} entries in 'params' but got none instead!")
+                for param in symbol.params:
+                    if param not in params:
+                        raise KeyError(f"expected parameter named '{param}' was not found in 'params'")
+                for param in params:
+                    if param not in symbol.params:
+                        raise KeyError(f"unexpected parameter named '{param}' found in 'params'")
+            elif len(symbol.params) == 0:
+                params = None
+
+
+            # Initialise instance variables.
+            self._symbol: Symbol = symbol
+            self._parent: Optional['ModuleTree._Module'] = parent
+            self._child: Optional['ModuleTree._Module'] = None
+            self._level: int = 0 if parent is None else parent._level + 1
+            self._left: Optional['ModuleTree._Module'] = left
+            self._right: Optional['ModuleTree._Module'] = right
+            self._params: dict = dict() if params is None else params
+
+
+        # --------------------------------------------------------------------------------------------------------------
+        # Query
+
+        @property
+        def symbol(self) -> Symbol:
+            """Returns a reference to the symbol that describes this instance."""
+            return self._symbol
+
+        @property
+        def parent(self) -> Optional['ModuleTree._Module']:
+            """Returns a reference to the parent node if any."""
+            return self._parent
+
+        @property
+        def level(self) -> int:
+            """Returns the depth of this node in the tree. The root node is 0."""
+            return self._level
+
+        @property
+        def left(self) -> Optional['ModuleTree._Module']:
+            """Returns the immediate sibling to the left of this node."""
+            return self._left
+
+        @property
+        def right(self) -> Optional['ModuleTree._Module']:
+            """Returns the immediate sibling to the right of this node."""
+            return self._right
+
+        @property
+        def child(self) -> Optional['ModuleTree._Module']:
+            """Returns the leftmost child of this node."""
+            return self._child
+
+        # --------------------------------------------------------------------------------------------------------------
+        # Insertion and deletion
+
+        def add_sibling(self, sibling: 'ModuleTree._Module', where: str = 'right') -> None:
+            """
+            Inserts a sibling to the left or right of this node.
+
+            :param sibling: the sibling to insert.
+            :param where: the direction to insert the sibling.
+            """
+            if where == 'right':
+                if self._right is not None:
+                    sibling._right = self._right
+                    self._right._left = sibling
+
+                self._right = sibling
+                sibling._left = self
+            elif where == 'left':
+                if self._left is not None:
+                    sibling._left = self._left
+                    self._left._right = sibling
+
+                self._left = sibling
+                sibling._right = self
+
+                # If I was the leftmost child pre-call
+                if getattr(self._parent, '_child', None) == self:
+                    self._parent._child = sibling
+            else:
+                raise ValueError(f"expected 'where' to be 'left' or 'right' but got {where} instead!")
+
+            sibling._level = self._level
+            sibling._parent = self._parent
+
+        def drop_sibling(self, where: str = 'right') -> bool:
+            """
+            Removes a sibling node to the immediate left or right of this node.
+            :param where: the direction to remove a node from.
+            :return: True if a sibling was removed; False otherwise.
+            """
+            if where == 'right':
+                # Nothing to drop
+                if self._right is None:
+                    return False
+                # Only one sibling to the right.
+                if self._right._right is None:
+                    self._right = None
+                    return True
+                # More than one sibling to the right.
+                self._right._right._left = self
+                self._right = self._right._right
+                return True
+
+            elif where == 'left':
+                # Nothing to drop
+                if self._left is None:
+                    return False
+                # Only one sibling to the left.
+                if self._left._left is None:
+                    # Update parent if we dropped the leftmost sibling.
+                    if getattr(self._parent, '_child', None) == self._left: # could be if self._parent is not None:
+                        self._parent._child = self
+
+                    self._left = None
+                    return True
+                # More than one sibling to the left.
+                self._left._left._right = self
+                self._left = self._left._left
+                return True
+            else:
+                raise ValueError(f"expected 'where' to be 'left' or 'right' but got {where} instead!")
+
+        def add_child(self, child: 'ModuleTree._Module') -> None:
+            """
+            Inserts a child node to the left of all previous child nodes.
+
+            :param child: the child node to insert.
+            """
+            if not isinstance(child, self):
+                raise TypeError(f"expected 'child' to be type: {type(self)} but got type: {type(child)} instead!")
+
+            if self._child is not None:
+                self._child.add_sibling(child, 'left')
+            else:
+                self._child = child
+
+        def drop_child(self):
+            pass
+
+        def drop_children(self):
+            pass
 
 
 class LSystem:
