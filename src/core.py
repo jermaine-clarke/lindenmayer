@@ -192,9 +192,20 @@ class Symbol:
 # TODO: the module string is implemented as a module tree that can be flattened into a string object.
 
 class ModuleTree:
+    """
+    A tree representing the string that had been or is being processed by the L-system.
 
-    class _Node:
-        pass
+    Each node in the tree holds an instance of a symbol and its parameters as they appear in the string. Each level of
+    the tree represents an iteration of the L-system.
+    """
+    def __init__(self):
+        self._parent: ModuleTree = None
+        self._child: ModuleTree = None # The left-most child. Immediate children are a linked list.
+        self._left: ModuleTree = None
+        self._right: ModuleTree = None
+        self._symbol: Symbol = None
+        self._level: int = 0
+        self._parameters: dict[str, str] = dict()
 
 
 class LSystem:
