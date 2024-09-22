@@ -3,7 +3,7 @@
 #  Copyright (c) 2024. Jermaine Clarke
 #  All rights reserved.
 #  ---------------------------------------------------------------------------------------------------------------------
-from typing import Optional, Iterable, Sequence, Any, Callable
+from typing import Any, Callable, Iterable, Optional, Sequence
 
 ParamTuple = tuple[str, ...]
 """A tuple of names for the parameters accepted by a Symbol"""
@@ -12,17 +12,19 @@ CommandCallable = Callable[..., Any]
 RuleCallable = Callable[..., Any]
 """A callable that checks for the conditions of a production rule and returns substitutions."""
 
+
 class Symbol:
     """
     Describes a symbol that is part of a Lindenmayer system alphabet.
 
     Provides the specification that allows each instance of the symbol to be interpreted and parsed.
     """
+
     def __init__(
             self,
             glyph: str, /,
             name: Optional[str] = None,
-            params: Iterable = None,*,
+            params: Iterable = None, *,
             call: Optional[CommandCallable] = None):
         """
         Creates a new symbol specification.
@@ -112,7 +114,6 @@ class Symbol:
 
         return f'^{self.glyph}{res}'
 
-
     def __repr__(self):
         return f'symbol[name=\'{self.name}\', glyph=\'{self.glyph}\', params={self.params}]'
 
@@ -133,10 +134,12 @@ class Symbol:
 
         return self._glyph != other._glyph or self._parameter_names != other._parameter_names
 
+
 class Alphabet:
     """
     A set of symbols that can be combined to form Lindenmayer strings.
     """
+
     def __init__(self):
         self._symbols: set[Symbol] = set()
         self._is_final: bool = False
@@ -251,7 +254,7 @@ class Alphabet:
     # ------------------------------------------------------------------------------------------------------------------
     # Modification
 
-    def add(self, symbol, /, param_names = None, cmd = None, name = None) -> Symbol:
+    def add(self, symbol, /, param_names=None, cmd=None, name=None) -> Symbol:
         """
         Adds a distinct symbol to the alphabet.
 
@@ -277,7 +280,6 @@ class Alphabet:
 
         self._symbols.add(symbol)
         return symbol
-
 
     def drop(self, symbol) -> Symbol:
         """
@@ -350,10 +352,12 @@ class Alphabet:
         """Determine if the alphabet is read-only"""
         return self._is_final
 
+
 class _SymbolNode:
     """
     An occurrence of a symbol in a LString.
     """
+
     def __init__(self,
                  symbol: Symbol,
                  left: Optional['_SymbolNode'] = None,
@@ -389,13 +393,11 @@ class _SymbolNode:
 
         # TODO: if left or right are specified then ensure that the list references are adjusted.
 
-
         # Initialise instance variables.
         self._symbol: Symbol = symbol
         self._left: Optional['_SymbolNode'] = left
         self._right: Optional['_SymbolNode'] = right
         self._params: dict = dict() if params is None else params
-
 
     # --------------------------------------------------------------------------------------------------------------
     # Query
@@ -511,13 +513,15 @@ class _SymbolNode:
         """
         self._params[parameter] = value
 
+
 class String:
     """
     The string processed by an LSystem.
 
     Implemented as a linked list where each node is an occurrence of a symbol and its parameters in the string.
     """
-    def __init__(self, alphabet, string = None):
+
+    def __init__(self, alphabet, string=None):
         """
         Initialises a new String object.
 
@@ -535,7 +539,6 @@ class String:
         self._first: Optional[_SymbolNode] = None
         self._last: Optional[_SymbolNode] = None
 
-
     @property
     def alphabet(self) -> Alphabet:
         """Returns the Alphabet of this String."""
@@ -548,7 +551,7 @@ class String:
     # Insertion, removal, and modification
 
     def insert(self,
-               item: str | 'String',
+               item: 'String | str',
                loc: int,
                params: Optional[dict] = None) -> None:
         """
@@ -567,7 +570,7 @@ class String:
         # When loc is positive insert to the left of the node that is there, when negative insert to the right.
         raise NotImplementedError()
 
-    def remove(self, start, stop = None) -> 'String':
+    def remove(self, start, stop=None) -> 'String':
         """
         Removes a substring from this string.
 
@@ -579,7 +582,7 @@ class String:
         """
         raise NotImplementedError()
 
-    def append(self, item: str | 'String', params: Optional[dict] = None) -> None:
+    def append(self, item: 'str | String', params: Optional[dict] = None) -> None:
         """
         Inserts a substring to the end of this string.
 
@@ -595,7 +598,7 @@ class String:
         """
         self.insert(item, -1, params)
 
-    def prepend(self, item: str | 'String', params: Optional[dict] = None) -> None:
+    def prepend(self, item: 'str | String', params: Optional[dict] = None) -> None:
         """
         Inserts a substring to the start of this string.
 
@@ -611,7 +614,7 @@ class String:
         """
         self.insert(item, 0, params)
 
-    def replace(self, loc: int | slice, item: str | 'String', params: Optional[dict] = None) -> 'String':
+    def replace(self, loc: int | slice, item: 'str | String', params: Optional[dict] = None) -> 'String':
         """
         Replaces a substring with a symbol or another string of symbols.
 
@@ -675,7 +678,7 @@ class String:
         """
         raise NotImplementedError()
 
-    def __getitem__(self, loc: tuple[int, str] | slice) -> 'String' | str:
+    def __getitem__(self, loc: tuple[int, str] | slice) -> 'String | str':
         """
         Retrieves a substring or a parameter for a single symbol instance.
 
@@ -684,7 +687,6 @@ class String:
         :return: a substring or parameter value.
         """
         raise NotImplementedError()
-
 
     def substring(self, loc: int | slice) -> 'String':
         """
@@ -695,7 +697,6 @@ class String:
         :raises IndexError: if *loc* is out-of-bounds.
         """
         raise NotImplementedError()
-
 
     # ------------------------------------------------------------------------------------------------------------------
     # str conversion
@@ -720,6 +721,7 @@ class RuleResult:
     def __init__(self, symbol, status, replacement):
         raise NotImplementedError()
 
+
 # TODO: a production rule handler is given a reference to the string. Remove the pre and post parameters, the handler
 #   can act on the entire string. It also allows the handler to do global processing. One limitation is that this global
 #   view is of the previous iteration. The current iteration is rewritten in post processing.
@@ -732,7 +734,8 @@ class Rule:
     A rewrite rule that describe how instances of symbols are replaced with other instances of symbols from the same
     alphabet.
     """
-    def __init__(self, subject, handler, name = None):
+
+    def __init__(self, subject, handler, name=None):
         """
         Create a new production rule.
 
@@ -766,6 +769,7 @@ class LSystem:
     """
     An implementation of a Lindenmayer system consisting of an alphabet, rewriting rules, and an initial axiom.
     """
+
     def __init__(self):
         self._symbols: set = set()
         # TODO: rules for a symbol are ordered. Keep track of how many p and none p's for each symbol to decide whether
@@ -913,7 +917,7 @@ class LSystem:
         """
         raise NotImplementedError()
 
-    def get_rules_for(self, glyph, *, name = None, suppress = False) -> Any:
+    def get_rules_for(self, glyph, *, name=None, suppress=False) -> Any:
         """
         Returns an ordered set of rules for the specified symbol.
 
@@ -928,7 +932,7 @@ class LSystem:
     # ------------------------------------------------------------------------------------------------------------------
     # Execution
 
-    def iterate(self, axiom = None, iters=100) -> bool:
+    def iterate(self, axiom=None, iters=100) -> bool:
         """
         Recursively applies the ruleset to the module string.
 
