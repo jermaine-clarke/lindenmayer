@@ -12,61 +12,6 @@ CommandCallable = Callable[..., Any]
 RuleCallable = Callable[..., Any]
 """A callable that checks for the conditions of a production rule and returns substitutions."""
 
-class ProductionRule:
-    """
-    A rewrite rule that describe how instances of symbols are replaced with other instances of symbols from the same
-    alphabet.
-    """
-    def __init__(self, handler, pre = 0, post = 0, name = None):
-        """
-        Create a new production rule.
-
-        :param str name: the name of the rule
-        :param int pre: the number of symbols to the left of the subject that are captured.
-        :param int post: the number of symbols to the right of the subject that are captured.
-        :param Callable[..., Any] handler: the callable that will handle the rule.
-        """
-        if name is not None and not isinstance(name, str):
-            raise TypeError(f"expected 'name' to be a string but got a {type(name)} instead!")
-
-        pre = int(pre)
-        post = int(post)
-        if pre < 0:
-            raise ValueError(f"'pre' should be a positive integer, but got {pre} instead!")
-        if post < 0:
-            raise ValueError(f"'post' should be a positive integer, but got {post} instead!")
-        if not callable(handler):
-            raise TypeError("'handler' must be a callable.")
-
-        self._name = handler.__name__ if name is None else name
-        self._pre_capture = pre
-        self._post_capture = post
-        self._handler = handler
-
-
-    @property
-    def name(self) -> str:
-        """Returns the name of the rule."""
-        return self._name
-
-    @property
-    def pre(self) -> int:
-        """Returns the number of symbols to the left of the subject that are captured."""
-        return self._pre_capture
-
-    @property
-    def post(self) -> int:
-        """Returns the number of symbols to the right of the subject that are captured."""
-        return self._post_capture
-
-    @property
-    def handler(self) -> Callable[..., Any]:
-        """Returns the handler for the rule."""
-        return self._handler
-
-    def __call__(self, *args, **kwargs):
-        return self._handler(args, kwargs)
-
 class Symbol:
     """
     Describes a symbol that is part of a Lindenmayer system alphabet.
@@ -187,7 +132,6 @@ class Symbol:
             raise TypeError(f"'other' must be a {type(self)} but got {type(other)} instead!")
 
         return self._glyph != other._glyph or self._parameter_names != other._parameter_names
-
 
 class Alphabet:
     """
@@ -453,13 +397,13 @@ class _SymbolNode:
         self._params: dict = dict() if params is None else params
 
 
-        # --------------------------------------------------------------------------------------------------------------
-        # Query
+    # --------------------------------------------------------------------------------------------------------------
+    # Query
 
-        @property
-        def symbol(self) -> Symbol:
-            """Returns a reference to the symbol that describes this instance."""
-            return self._symbol
+    @property
+    def symbol(self) -> Symbol:
+        """Returns a reference to the symbol that describes this instance."""
+        return self._symbol
 
     @property
     def left(self) -> Optional['_SymbolNode']:
@@ -492,20 +436,20 @@ class _SymbolNode:
         """
         Inserts a sibling to the left or right of this node.
 
-            :param sibling: the sibling to insert.
-            :param where: the direction to insert the sibling.
-            """
-            if where == 'right':
-                if self._right is not None:
-                    sibling._right = self._right
-                    self._right._left = sibling
+        :param sibling: the sibling to insert.
+        :param where: the direction to insert the sibling.
+        """
+        if where == 'right':
+            if self._right is not None:
+                sibling._right = self._right
+                self._right._left = sibling
 
-                self._right = sibling
-                sibling._left = self
-            elif where == 'left':
-                if self._left is not None:
-                    sibling._left = self._left
-                    self._left._right = sibling
+            self._right = sibling
+            sibling._left = self
+        elif where == 'left':
+            if self._left is not None:
+                sibling._left = self._left
+                self._left._right = sibling
 
             self._left = sibling
             sibling._right = self
@@ -852,7 +796,7 @@ class LSystem:
         """
         raise NotImplementedError()
 
-    def add_rule(self, symbol, handler, pre, post, name, p) -> ProductionRule:
+    def add_rule(self, symbol, handler, pre, post, name, p) -> Rule:
         """
         Adds a production rule to the ruleset. The rule is added to the back of the queue for the subject symbol.
 
@@ -944,7 +888,7 @@ class LSystem:
         """
         raise NotImplementedError()
 
-    def get_rule(self, name, suppress=False) -> Optional[ProductionRule]:
+    def get_rule(self, name, suppress=False) -> Optional[Rule]:
         """
         Returns a reference to the rule.
 
