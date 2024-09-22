@@ -627,6 +627,18 @@ class String:
         """
         raise NotImplementedError()
 
+    def __setitem__(self, loc: int | slice, substring: 'String') -> 'String':
+        """
+        Replaces a substring with another substring or inserts a substring.
+
+        :param loc: if an integer then the position to insert *substring*; if a slice then it identifies the substring
+                    to replace.
+        :param substring: the string of symbol instances to be inserted.
+        :return: a reference to *substring*.
+        """
+        # Support slicing.
+        raise NotImplementedError()
+
     # ------------------------------------------------------------------------------------------------------------------
     # Substring/parameter access
 
@@ -663,12 +675,14 @@ class String:
         """
         raise NotImplementedError()
 
-    def __setitem__(self, key, value):
-        # Support slicing.
-        raise NotImplementedError()
+    def __getitem__(self, loc: tuple[int, str] | slice) -> 'String' | str:
+        """
+        Retrieves a substring or a parameter for a single symbol instance.
 
-    def __getitem__(self, loc):
-        # Support index or slice
+        :param loc: when a slice then it locates a substring to retrieve; when a tuple, the first item is the location
+                    of a symbol instance and the second item is the name of a parameter to retrieve.
+        :return: a substring or parameter value.
+        """
         raise NotImplementedError()
 
 
