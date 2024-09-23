@@ -403,6 +403,11 @@ class _SymbolNode:
     # Query
 
     @property
+    def params(self) -> dict:
+        """Returns a reference to the dictionary containing the parameter names as key and their values."""
+        return self._params
+
+    @property
     def symbol(self) -> Symbol:
         """Returns a reference to the symbol that describes this instance."""
         return self._symbol
@@ -521,23 +526,69 @@ class String:
     Implemented as a linked list where each node is an occurrence of a symbol and its parameters in the string.
     """
 
-    def __init__(self, alphabet, string=None):
+    def __init__(self, string: 'Optional[str | String]' = None, alphabet: Optional[Alphabet] = None,
+                 copy: Optional[bool] = None):
         """
         Initialises a new String object.
 
-        :param Alphabet alphabet: the Alphabet containing the symbols used in the String.
-        :param str string: an optional input string to be parsed.
+        :param string: an optional String or built-in string (will be parsed). If *None* then an empty object is
+                       created.
+        :param alphabet: the Alphabet containing the symbols used in the String. Must be specified for empty String
+                         objects or when *string* is a built-in string. When *string* is a String object then the
+                         alphabet is inherited.
+        :param copy: when *False* shares the underlying data with the input string where possible; when *True* this
+                     string will own its data; when *None* it will share data where possible and create a copy when
+                     attempts are made to edit the string.
         :raises TypeError: if *alphabet* is not an Alphabet object.
         """
-        if not isinstance(alphabet, Alphabet):
-            raise TypeError(f"expected 'alphabet' to be an Alphabet object got {type(alphabet)} instead!")
-        if string is not None:
-            raise NotImplementedError('parsing a string at initialisation not yet supported.')
+        if not isinstance(copy, bool) and copy is not None:
+            raise TypeError(f"attempted to input a {type(copy)} instead of a bool for 'copy'!")
+        if isinstance(string, str):
+            if not isinstance(alphabet, Alphabet):
+                raise TypeError(f"expected 'alphabet' to be an Alphabet object got {type(alphabet)} instead!")
+            # TODO: parse
+            raise NotImplementedError
+        if isinstance(string, String):
+            if string._len == 0:
+                self._first = None
+                self._last = None
+                self._len = 0
+                self._alphabet = string._alphabet
+                self._is_owner = True
+                self._copy_on_write = False
+            elif copy is None:
+                self._first = string._first
+                self._last = string._last
+                self._len = string._len
+                self._alphabet = string._alphabet
+                self._is_owner = False
+                self._copy_on_write = True
+            elif copy:
+                nd = string._first
+                self._first = _SymbolNode(nd.symbol, params=nd.params)
+                self._last = self._first
+                for i in range(string._len - 1):
+                    nd = nd.right
+                    self._last.right = _SymbolNode(nd.symbol, params=nd.params)
+                    self._last = self._last.right
+                self._len = string._len
+                self._alphabet = string._alphabet
+                self._is_owner = True
+                self._copy_on_write = False
+            else:
+                self._first = string._first
+                self._last = string._last
+                self._len = string._len
+                self._alphabet = string._alphabet
+                self._is_owner = False
+                self._copy_on_write = False
 
-        self._len: int = 0
-        self._alphabet: Alphabet = alphabet
         self._first: Optional[_SymbolNode] = None
         self._last: Optional[_SymbolNode] = None
+        self._len: int = 0
+        self._alphabet: Alphabet = alphabet
+        self._is_owner: bool = True
+        self._copy_on_write: bool = False
 
     @property
     def alphabet(self) -> Alphabet:
@@ -555,27 +606,79 @@ class String:
                loc: int,
                params: Optional[dict] = None) -> None:
         """
-        Inserts a string at a location.
+        Inserts a string at a location. The operation is destructive for the inserted string.
 
         :param str item: a 'String' of symbols in the alphabet or a 'str' representing the glyph or name of a symbol in
                          the alphabet. If the str is a single character then it is treated as the glyph of the symbol;
                          otherwise it is treated as the name.
-        :param int loc: the position where *item* should be inserted. Negative numbers are referenced from the last
-                        symbol in the string backwards.
+        :param int loc: the position where *item* should be inserted. Insertion happens to the left of the node at the
+                        location for positive numbers. Negative numbers are referenced from the last symbol in the
+                        string backwards and insertion occurs to the right.
         :param params: if *item* is a 'str' then these are the arguments captured by the referenced symbol; otherwise it
                        is ignored.
         :raises IndexError: if *loc* is out-of-bounds.
         :raises KeyError: if any inserted symbol is not in the string's alphabet.
+        :raises TypeError: if *item* is not an expected type.
         """
-        # When loc is positive insert to the left of the node that is there, when negative insert to the right.
-        raise NotImplementedError()
+        if not isinstance(loc, int):
+            raise TypeError(f"expected 'loc' to be an int object got {type(loc)} instead!")
+        if (self._len == 0 and loc not in (0, -1)) or not -self._len <= loc < self._len:
+            raise IndexError("'loc' is out-of-bounds!")
+
+        if isinstance(item, str):
+            new_node = _SymbolNode(self.alphabet.get(item), params=params)
+
+            if new_node not in self.alphabet:
+                raise KeyError("attempted to insert a symbol that is not in this string's alphabet!")
+
+            if loc == 0:
+                new_node.right = self._first
+                self._first = new_node
+                if self._len == 0:
+                    self._last = new_node
+                self._len += 1
+            elif loc > 0:
+                nd = self._first
+                for i in range(loc):
+                    nd = nd.right
+
+                new_node.right = nd
+                new_node.left = nd.left
+                if nd.left is not None:
+                    nd.left.right = new_node
+                nd.left = new_node
+                self._len += 1
+            else:
+                nd = self._last
+                for i in range(-loc - 1):
+                    nd = nd.left
+
+                new_node.left = nd
+                new_node.right = nd.right
+                if nd.right is not None:
+                    nd.right.left = new_node
+                nd.right = new_node
+                if self._last == nd:
+                    self._last = new_node
+                self._len += 1
+
+        elif isinstance(item, String):
+            if item.alphabet <= self.alphabet:
+                if loc >= 0:
+                    pass
+                else:
+                    pass
+            else:
+                raise KeyError("one or more symbols are not in this string's alphabet!")
+        else:
+            raise TypeError(f"expected 'item' to be a String or str object got {type(item)} instead!")
 
     def remove(self, start, stop=None) -> 'String':
         """
         Removes a substring from this string.
 
         :param int start: the index of the first symbol in the substring to remove.
-        :param int stop: if **None** (default) then only one sybmol is removed; otherwise it is the index of the last
+        :param int stop: if **None** (default) then only one symbol is removed; otherwise it is the index of the last
                          symbol in the substring to remove + 1.
         :return: a reference to the removed substring.
         :raises IndexError: if any index is out-of-bounds or if stop refers to a symbol before start.
@@ -714,7 +817,21 @@ class String:
     # Iteration
 
     def __iter__(self):
-        raise NotImplementedError()
+        return _StringIterator(self._first, self._last)
+
+
+class _StringIterator:
+    def __init__(self, start: _SymbolNode, stop: _SymbolNode):
+        self._next = start
+        self._last = stop
+
+    def __next__(self) -> _SymbolNode:
+        if self._next is None:
+            raise StopIteration
+
+        res = self._next
+        self._next = res.right if res.right is not self._last else None
+        return res
 
 
 class RuleResult:
