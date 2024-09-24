@@ -518,6 +518,10 @@ class _SymbolNode:
         """
         self._params[parameter] = value
 
+    def clone(self) -> '_SymbolNode':
+        """Returns a copy of this node."""
+        return _SymbolNode(self._symbol, left=self._left, right=self._right, params=self._params.copy())
+
 
 class String:
     """
