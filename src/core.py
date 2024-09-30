@@ -3,7 +3,8 @@
 #  Copyright (c) 2024. Jermaine Clarke
 #  All rights reserved.
 #  ---------------------------------------------------------------------------------------------------------------------
-from typing import Any, Callable, Iterable, Optional, Sequence
+from typing import Any, Generator, Iterable, Optional, Sequence
+from collections.abc import Callable
 
 ParamTuple = tuple[str, ...]
 """A tuple of names for the parameters accepted by a Symbol"""
@@ -12,169 +13,204 @@ CommandCallable = Callable[..., Any]
 RuleCallable = Callable[..., Any]
 """A callable that checks for the conditions of a production rule and returns substitutions."""
 
+SymbolProc = Callable[['symbol', dict], Any]
+"""
+The function signature for a symbol procedure. It is passed a reference to the symbol and a dictionary of arguments 
+for a specific occurence of the symbol in a string.
+"""
+ListLike = tuple | list
+ArgSpec = dict[str, type]
+
 
 class Symbol:
     """
-    Describes a symbol that is part of a Lindenmayer system alphabet.
-
-    Provides the specification that allows each instance of the symbol to be interpreted and parsed.
+    A symbol is a glyph that represents a command or action in a Lindenmayer string, which is a sequence of symbols.
     """
+    __slots__ = '_glyph', '_name', '_arg_spec', '_proc', '_regex'
 
-    def __init__(
-            self,
-            glyph: str, /,
-            name: Optional[str] = None,
-            params: Iterable = None, *,
-            call: Optional[CommandCallable] = None):
+    def __init__(self, glyph: str, name: str, args: ListLike=tuple(), argtypes: ListLike=tuple(),
+                 proc: Optional[SymbolProc]=None):
         """
-        Creates a new symbol specification.
+        Creates a new symbol.
 
-        :param name: the name of the symbol. If *glyph* is None then this is also used as the glyph.
-        :param glyph: the glyph used to visually represent the symbol.
-        :param params: the list of names for parameters associated with the symbol.
-        :param call: the command corresponding to this symbol in the final string.
+        :param glyph: the single character that visual represents the symbol in a string.
+        :param name: the name of the symbol that can be used to identify it.
+        :param args: a list-like containing the names of all arguments required by each occurrence of the symbol in a
+                     string.
+        :param argtypes: a list-like containing the types of all arguments required by each occurrence of the symbol in
+                         a string. Must be the same length and order as *args* if provided.
+        :param proc: an optional callable that is invoked on each occurence of the symbol in the final
+                     string.
         """
-        # Validate inputs
-        if not isinstance(glyph, str):
-            raise TypeError(f"'glyph' must be a 'str' not a {type(glyph)}!")
-        if len(glyph) != 1:
-            raise ValueError(f"expected a single character for 'glyph' but got {len(glyph)} instead!")
+        assert isinstance(glyph, str), f"'glyph' is expected to be a string but type {type(glyph)} was passed."
+        assert isinstance(name, str), f"'name' is expected to be a string but type {type(name)} was passed."
+        assert len(glyph) == 1, f"expected a single character for 'glyph' but got {len(glyph)} characters."
 
-        if name is not None and not isinstance(name, str):
-            raise TypeError(f"'name' must be a 'str' not a {type(name)}!")
+        args = tuple(args)
+        argtypes = tuple(argtypes)
 
-        if params is not None:
-            if not isinstance(params, Sequence) or isinstance(params, str):
-                raise TypeError(f"expected 'params' to be a non-string sequence but got {type(params)} instead!")
+        for arg in args:
+            assert isinstance(arg, str), "elements in 'args' must be strings."
+        for atype in argtypes:
+            assert atype in (int, float, str), "elements in 'argtypes' must be one of (int, float, str) specifiers."
 
-            for param in params:
-                if not isinstance(param, str):
-                    raise TypeError(f"expected type 'str' for parameter name '{param}' but got {type(param)} instead!")
-
-        if call is not None and not callable(call):
-            raise TypeError(f"expected 'call' to be a callable but got {type(call)} instead!")
-
-        # Initialise instance variables.
-        self._name: str = glyph if name is None else name
         self._glyph: str = glyph
-        self._parameter_names: ParamTuple = tuple(params) if params is not None else tuple()
-        self._command: Optional[CommandCallable] = call
-        self._ruleset: list = []
-        self._regex: str = self._generate_regex()
+        self._name: str = name
+        self._arg_spec: ArgSpec = dict(zip(args, argtypes))
+        self._proc: SymbolProc = proc
+        self._regex: Optional[str] = None
 
-    @property
-    def name(self) -> str:
-        """Returns the name of the symbol"""
-        return self._name
+        pass
 
     @property
     def glyph(self) -> str:
-        """Returns the glyph used to represent the symbol"""
+        """
+        Returns the character that visually represents this symbol in a string.
+        """
         return self._glyph
 
     @property
-    def params(self) -> ParamTuple:
-        """Returns a tuple containing the names of the parameters required by this parameter."""
-        return self._parameter_names
+    def name(self) -> str:
+        """
+        Returns the name of this symbol.
+        """
+        return self._name
 
     @property
-    def size(self) -> int:
-        """Returns the number of parameters required by this symbol."""
-        return len(self._parameter_names)
+    def arglen(self) -> int:
+        """Return the number of arguments required by each occurence of this symbol."""
+        return len(self._arg_spec)
 
     @property
-    def callable(self) -> Optional[CommandCallable]:
-        """Returns the optional callable object implementing the command represented by this symbol."""
-        return self._command
+    def argnames(self) -> tuple[str, ...]:
+        """Returns a tuple containing the names of all the required arguments of this symbol."""
+        return tuple(self._arg_spec)
+
+    @property
+    def argtypes(self) -> tuple[type, ...]:
+        """Returns a tuple containing the types of all the required arguments of this symbol."""
+        return tuple(self._arg_spec.values())
+
+    @property
+    def argspec(self) -> dict[str, type]:
+        """Returns a dictionary containing argument names as keys and argument types as values."""
+        return dict(self._arg_spec)
+
+    @property
+    def proc(self) -> SymbolProc:
+        """
+        Returns a reference to the procedure attached to this symbol. This procedure is called every time this symbol
+        is encountered in the final string.
+        """
+        return self._proc
 
     @property
     def regex(self) -> str:
-        """Returns the regular expression string that will match an instance of this symbol and its parameters."""
+        """
+        Returns the regular expression that can be used to find occurences of this symbol in a 'str'.
+        """
+        if self._regex is None:
+            whitespace = r'\s'
+            alphanumeric = r'\w'
+            open_parenthesis = r'\('
+            closing_parenthesis = r'\)'
+
+            # Add expressions for each argument
+            res = ''
+            for arg in self._arg_spec.keys():
+                res += f'{whitespace}*(?P<{arg}>{alphanumeric}+),'
+
+            # Remove the comma after the last argument and add brackets
+            if len(res) > 0:
+                res = f'{open_parenthesis}{res[:-1]}{closing_parenthesis}'
+
+            self._regex = f'^{self.glyph}{res}'
+
         return self._regex
 
-    def _generate_regex(self) -> str:
-        """
-        Generates the regular expression that will match an instance of this symbol and its parameters.
+    def __hash__(self) -> int:
+        """Returns the has of this symbol."""
+        return hash(self._glyph)
 
-        :return: the regular expression for instances of this symbol.
-        """
-        whitespace = r'\s'
-        alphanumeric = r'\w'
-        open_parenthesis = r'\('
-        closing_parenthesis = r'\)'
+    def __call__(self, *args, **kwargs):
+        # TODO: implement
+        raise NotImplementedError
 
-        # Add expressions for each argument
-        res = ''
-        for param in self.params:
-            res += f'{whitespace}*(?P<{param}>{alphanumeric}+),'
+    def __eq__(self, other) -> bool:
+        """Returns True if *other* is equal to this symbol. Two symbols are equal if they have the same glyph."""
+        if isinstance(other, Symbol) and other._glyph == self._glyph:
+            return True
 
-        # Remove the comma after the last argument and add brackets
-        if len(res) > 0:
-            res = f'{open_parenthesis}{res[:-1]}{closing_parenthesis}'
-
-        return f'^{self.glyph}{res}'
-
-    def __repr__(self):
-        return f'symbol[name=\'{self.name}\', glyph=\'{self.glyph}\', params={self.params}]'
-
-    def __hash__(self):
-        return hash(self.glyph)
-
-    def __eq__(self, other: 'Symbol') -> bool:
-
-        if not isinstance(other, type(self)):
-            raise TypeError(f"'other' must be a {type(self)} but got {type(other)} instead!")
-
-        return self._glyph == other._glyph and self._parameter_names == other._parameter_names
+        return False
 
     def __ne__(self, other):
+        """
+        Returns True if *other* is not equal to this symbol. Two symbols are not equal if they have distinct glyphs.
+        """
+        return not self.__eq__(other)
 
-        if not isinstance(other, type(self)):
-            raise TypeError(f"'other' must be a {type(self)} but got {type(other)} instead!")
+    def __repr__(self):
+        return f'symbol[name=\'{self._name}\', glyph=\'{self._glyph}\', params={self.argnames}]'
 
-        return self._glyph != other._glyph or self._parameter_names != other._parameter_names
+    def __str__(self):
+        return f"{self._glyph}{self.argnames}".replace(',)',')').replace('()','')
 
+    def __getitem__(self, key) -> type:
+        """
+        Retrieves the type specification for an argument.
+        :param key: the argument name.
+        :return: the type specification for the argument.
+        """
+        return self._arg_spec.__getitem__(key)
 
 class Alphabet:
     """
     A set of symbols that can be combined to form Lindenmayer strings.
     """
 
-    def __init__(self):
-        self._symbols: set[Symbol] = set()
-        self._is_final: bool = False
+    def __init__(self, symbols: list[Symbol] | tuple[Symbol] | None = None):
+        sym = set()
+
+        if symbols is not None:
+            for s in symbols:
+                assert isinstance(s, Symbol), f"elements in 'symbols' must be of type {Symbol.__name__}."
+                sym.add(s)
+
+        self._symbols: set[Symbol] = sym
 
     # ------------------------------------------------------------------------------------------------------------------
     # Membership and iteration
 
-    def __contains__(self, symbol) -> bool:
+    def __contains__(self, item: Symbol | str) -> bool:
         """
         Test a symbol for membership in this alphabet.
 
-        :param Symbol | str symbol: a symbol, character, or symbol name to test.
+        :param item: a symbol, character, or symbol name to test.
         :return: True if *symbol* is a member of this alphabet; False otherwise.
         :raises TypeError: if *symbol* is not an instance of class ``Symbol``.
         :raises ValueError: if *symbol* is an empty string.
         """
-        if isinstance(symbol, Symbol):
-            return symbol in self._symbols
-        elif isinstance(symbol, str):
-            if len(symbol) == 1:
+        assert isinstance(item, (str, Symbol)), f"expected 'item' to be a string or a symbol but got {type(item)} instead."
+
+        if isinstance(item, Symbol):
+            return item in self._symbols
+        elif isinstance(item, str):
+            if len(item) == 1:
                 # Search by glyph
                 for s in self._symbols:
-                    if s.glyph == symbol:
+                    if s.glyph == item:
                         return True
                 return False
-            elif len(symbol) > 1:
+            elif len(item) > 1:
                 # Search by name
                 for s in self._symbols:
-                    if s.name == symbol:
+                    if s.name == item:
                         return True
                 return False
             else:
                 raise ValueError('an empty string is not acceptable!')
 
-        raise TypeError(f"expected an instance of type 'Symbol' got {type(symbol)} instead!")
+        raise TypeError(f"expected an instance of type 'Symbol' got {type(Symbol)} instead!")
 
     def __len__(self) -> int:
         """Return the number of symbols in this alphabet."""
@@ -254,34 +290,39 @@ class Alphabet:
     # ------------------------------------------------------------------------------------------------------------------
     # Modification
 
-    def add(self, symbol, /, param_names=None, cmd=None, name=None) -> Symbol:
+    def add(self,
+            symbol: Symbol | str, /,
+            arg_spec: ArgSpec = None,
+            proc: SymbolProc = None,
+            name: Optional[str] = None) -> Symbol:
         """
         Adds a distinct symbol to the alphabet.
 
-        :param Symbol | str symbol: a Symbol object or a character representing the glyph of the symbol. All other parameters are
-                                    ignored if a Symbol object is given.
-        :param Sequence param_names: the names of the arguments that the symbol requires.
-        :param Callable cmd: an optional callable that executes the command associated with the symbol.
-        :param str name: an optional friendly name to identify the symbol (default: *glyph*)
+        :param symbol: a Symbol object or a character representing the glyph of the symbol. All other parameters are
+                       ignored if a Symbol object is given.
+        :param arg_spec: a dictionary of (name, type) pairs specifying symbol arguments and their types.
+        :param proc: an optional callable that executes the command associated with the symbol.
+        :param name: an optional friendly name to identify the symbol (default: *glyph*)
         :return: a reference to the newly added symbol.
         :raises KeyError: if the name or glyph is in use by another symbol in the alphabet.
         :raises PermissionError: if the alphabet has been marked finalised.
-        :raises TypeError: if *symbol* is not a string or a Symbol object.
         """
-        if self._is_final:
-            raise PermissionError('this alphabet is read-only!')
+        assert isinstance(symbol, (str, Symbol)), f"expected 'symbol' to be a string or a symbol but got type {type(symbol)} instead."
 
         # Create the symbol object
         if isinstance(symbol, str):
-            symbol = Symbol(symbol, name=name, params=param_names, call=cmd)
+            if name is None:
+                name = symbol
 
-        if not isinstance(symbol, Symbol):
-            raise TypeError(f"expected 'symbol' to be a string or Symbol object got {type(symbol)} instead!")
+            if arg_spec is None:
+                symbol = Symbol(symbol, name, proc=proc)
+            else:
+                symbol = Symbol(symbol, name, tuple(arg_spec.keys()), tuple(arg_spec.values()), proc)
 
         self._symbols.add(symbol)
         return symbol
 
-    def drop(self, symbol) -> Symbol:
+    def drop(self, symbol: str) -> Symbol:
         """
         Removes the specified symbol from the alphabet.
 
@@ -290,10 +331,7 @@ class Alphabet:
         :return: a reference to the dropped symbol.
         :raises TypeError: if *symbol* is not a str object.
         :raises KeyError: if the symbol is not found in the alphabet.
-        :raises PermissionError: if the alphabet has been marked finalised.
         """
-        if self._is_final:
-            raise PermissionError('this alphabet is read-only!')
         if not isinstance(symbol, str):
             raise TypeError(f"expected a 'str' got type {type(symbol)} instead!")
 
@@ -315,43 +353,131 @@ class Alphabet:
     # ------------------------------------------------------------------------------------------------------------------
     # Access and permission
 
-    def get(self, symbol) -> Symbol:
+    def get(self, symbol: str) -> Symbol:
         """
         Retrieves a reference to a symbol in this Alphabet.
 
-        :param str symbol: the glyph of the sybmol if one character; the name of the symbol otherwise.
+        :param symbol: the glyph of the symbol if one character; the name of the symbol otherwise.
         :return: a reference to the Symbol
         :raises KeyError: if the symbol is not found.
         :raises TypeError: if *symbol* is not of type 'str'.
         :raises ValueError: if *symbol* is an empty string.
         """
-        if isinstance(symbol, str):
-            if len(symbol) == 1:
-                # Search by glyph
-                for s in self._symbols:
-                    if s.glyph == symbol:
-                        return s
-                raise KeyError(f"the glyph '{symbol}' was not found!")
-            elif len(symbol) > 1:
-                # Search by name
-                for s in self._symbols:
-                    if s.name == symbol:
-                        return s
-                raise KeyError(f"the symbol name '{symbol}' was not found!")
-            else:
-                raise ValueError('an empty string is not acceptable!')
+        assert isinstance(symbol, str), f"expected 'symbol' to be a string but got type {type(symbol)} instead."
 
-        raise TypeError(f"expected an instance of type 'Symbol' got {type(symbol)} instead!")
+        if len(symbol) == 1:
+            # Search by glyph
+            for s in self._symbols:
+                if s.glyph == symbol:
+                    return s
+            raise KeyError(f"the glyph '{symbol}' was not found!")
+        elif len(symbol) > 1:
+            # Search by name
+            for s in self._symbols:
+                if s.name == symbol:
+                    return s
+            raise KeyError(f"the symbol name '{symbol}' was not found!")
+        else:
+            raise ValueError('an empty string is not acceptable!')
 
-    def finalise(self):
-        """Marks the alphabet as read-only."""
-        self._is_final = True
+class _character_node:
+    __slots__ = '_symbol', '_args', '_left', '_right'
+
+    def __init__(self,
+                 symbol: Symbol,
+                 args: Optional[dict] = None,
+                 left: 'Optional[_character_node]' = None,
+                 right: 'Optional[_character_node]' = None):
+        assert isinstance(symbol, Symbol), f"expected 'symbol' to be a Symbol object got type {type(symbol)} instead."
+
+        # Validate arguments.
+        if symbol.arglen > 0:
+            assert isinstance(args, dict), f"expected a dictionary"
+
+            # Check the types.
+            for arg, argtype in symbol.argspec.items():
+                if not isinstance(args[arg], argtype):
+                    raise TypeError(f"expected argument '{arg}' to be type '{argtype}' got {type(args[arg])} instead!")
+
+            # Check that args does not have extra arguments.
+            if len(args) != symbol.arglen:
+                raise KeyError(f"expected {symbol.arglen} arguments but 'args' has {len(args)}!")
+
+        assert left is None or isinstance(left, _character_node), f"expected {type(self)} for 'left' but got {type(left)}!"
+        assert right is None or isinstance(right, _character_node), f"expected {type(self)} for 'right' but got {type(right)}!"
+
+        self._symbol: Symbol = symbol
+        self._args: dict = dict() if args is None else dict(args)
+        self._left: 'Optional[_character_node]' = left
+        self._right: 'Optional[_character_node]' = right
+
+    def clone(self) -> '_character_node':
+        """
+        Return a clone of this character node. Does not copy siblings.
+        :return: a character node.
+        """
+        return _character_node(self._symbol, self._args)
+    
+    @property
+    def symbol(self) -> Symbol:
+        """Returns a reference to the symbol that this node represents."""
+        return self._symbol
+    
+    @property
+    def args(self) -> dict:
+        """Returns a dictionary of argument-value pairs."""
+        return dict(self._args)
 
     @property
-    def is_final(self) -> bool:
-        """Determine if the alphabet is read-only"""
-        return self._is_final
+    def right(self) -> 'Optional[_character_node]':
+        """Returns the node to the right of this in a string."""
+        return self._right
 
+    @right.setter
+    def right(self, value):
+        raise NotImplementedError
+
+    @property
+    def left(self) -> 'Optional[_character_node]':
+        """Returns the node to the left of this in a string."""
+        return self._left
+
+    @left.setter
+    def left(self, value):
+        raise NotImplementedError
+    
+    def __getitem__(self, arg) -> Any:
+        """Returns the value of the specified argument."""
+        return self._symbol[arg](self._args[arg])
+    
+    def __setitem__(self, arg, value):
+        """Sets the value of the specified argument."""
+        self._args[arg] = self._symbol[arg](value)
+    
+    def __eq__(self, other):
+        """Returns True if *other* represents the same symbol and has the same argument values."""
+        return isinstance(other, type(self)) and self._symbol == other._symbol and self._args == other._args
+    
+    def __ne__(self, other):
+        """Returns True if *other* represents a different symbol or has different argument values."""
+        return not self.__eq__(other)
+    
+    def __repr__(self):
+        return self.__str__()
+    
+    def __str__(self):
+        return self._symbol.glyph if self._symbol.arglen == 0 \
+            else f"{self._symbol.glyph}{tuple(self._args.values())}".replace(',)', ')')
+
+    def __call__(self):
+        raise NotImplementedError
+
+class string:
+    __slots__ = '_alphabet', '_first', '_last', '_length'
+    pass
+
+class rule:
+    pass
 
 class _SymbolNode:
     """

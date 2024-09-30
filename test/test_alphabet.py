@@ -14,13 +14,12 @@ class TestAlphabet(TestCase):
     def test_init(self):
         temp = Alphabet()
         self.assertEqual(len(temp), 0, 'empty alphabet should have a length of zero.')
-        self.assertFalse(temp.is_final, 'alphabet modifiable on init failure.')
 
     def test_add(self):
-        temp = Symbol('p', 'person', ['height', 'weight'])
+        temp = Symbol('p', 'person', ['height', 'weight'], [float, float])
         self.alphabet.add('a')
         self.assertEqual(len(self.alphabet), 1, "add-as-glyph failed to increase length.")
-        self.alphabet.add('b', param_names=['length', 'angle'], name='bend')
+        self.alphabet.add('b', arg_spec={'length': float, 'angle': float}, name='bend')
         self.assertEqual(len(self.alphabet), 2, "add-as-forwarding failed to increase length.")
         self.alphabet.add(temp)
         self.assertEqual(len(self.alphabet), 3, "add-as-object failed to increase length.")
@@ -35,10 +34,10 @@ class TestAlphabet(TestCase):
         self.fail()
 
     def test_contains(self):
-        temp = Symbol('p', 'person', ['height', 'weight'])
-        nm = Symbol('t')
+        temp = Symbol('p', 'person', ['height', 'weight'], [float, float])
+        nm = Symbol('t', 't')
         self.alphabet.add('a')
-        self.alphabet.add('b', param_names=['length', 'angle'], name='bend')
+        self.alphabet.add('b', arg_spec={'length': float, 'angle': float}, name='bend')
         self.alphabet.add(temp)
 
         self.assertTrue(temp in self.alphabet, 'membership-by-object test failed.')
@@ -170,14 +169,14 @@ class TestAlphabet(TestCase):
         res = self.alphabet.get(temp.glyph)
         self.assertEqual(res.glyph, temp.glyph)
         self.assertEqual(res.name, temp.name)
-        self.assertEqual(res.size, temp.size)
-        self.assertEqual(res.params, temp.params)
+        self.assertEqual(res.arglen, temp.arglen)
+        self.assertEqual(res.argnames, temp.argnames)
 
         res = self.alphabet.get('bisection')
         self.assertEqual(res.glyph, 'b')
         self.assertEqual(res.name, 'bisection')
-        self.assertEqual(res.size, 0)
-        self.assertEqual(res.params, tuple())
+        self.assertEqual(res.arglen, 0)
+        self.assertEqual(res.argnames, tuple())
 
     @skip('Functionality not yet implemented.')
     def test_iter(self):
